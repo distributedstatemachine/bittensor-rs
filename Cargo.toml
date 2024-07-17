@@ -1,0 +1,36 @@
+[package]
+name = "bittensor-rs"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = "4.5.9"
+crossterm = { version = "0.27", features = ["event-stream"] }
+codec = { package = "parity-scale-codec", version = "3.6.1", default-features = false, features = [
+    "derive",
+] }
+ratatui = "0.27.0"
+sp-core = "34.0.0"
+substrate-api-client = { version = "0.18.0", features = ["ws-client"] }
+thiserror = "1.0.62"
+tokio = { version = "1.38.0", features = ["full"] }
+frame-support = "36.0.0"
+scale-info = "2.11.3"
+subkey = "17.0.0"
+sp-runtime = "38.0.0"
+rand = "0.8.5"
+base64 = "0.22.1"
+aes-gcm = "0.10.3"
+bip39 = "2.0.0"
+serde = "1.0.204"
+serde_json = "1.0.120"
+dirs = "5.0.1"
+sha2 = "0.10.8"
+sp-application-crypto = "37.0.0"
+hex = "0.4.3"
+log = "0.4.22"
+env_logger = "0.11.3"
+simplelog = "0.12.2"
+parking_lot = "0.12.3"
+futures = "0.3.30"
+subxt = { version = "0.37.0", features = ["substrate-compat"] }
