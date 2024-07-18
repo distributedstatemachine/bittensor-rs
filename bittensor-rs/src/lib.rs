@@ -1,7 +1,10 @@
 #[macro_use]
 extern crate lazy_static;
 use log::info;
+use std::ops::Sub;
+use std::str::FromStr;
 use std::sync::Arc;
+use subxt::utils::AccountId32;
 
 use codec::Decode;
 use scale_info::prelude::any::TypeId;
@@ -10,6 +13,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use subxt::backend::rpc::RpcClient;
 use subxt::backend::rpc::RpcParams;
+use subxt::dynamic::Value as DynamicValue;
 use subxt::ext::sp_core::H256;
 use subxt::ext::sp_core::{sr25519, Pair};
 use subxt::metadata::DecodeWithMetadata;
@@ -23,7 +27,7 @@ pub mod subnets;
 pub mod wallet;
 
 pub mod errors;
-use errors::AppError;
+use errors::SubtensorError;
 
 lazy_static! {
     static ref TYPE_MAP: Mutex<HashMap<TypeId, u32>> = Mutex::new(HashMap::new());
@@ -64,11 +68,11 @@ pub trait ChainInteraction {
     ///
     /// # Returns
     ///
-    /// A Result containing () if successful, or an AppError if the submission fails.
+    /// A Result containing () if successful, or an SubtensorError if the submission fails.
     async fn submit_extrinsic(
         &self,
         call: impl subxt::tx::Payload + Send + Sync + 'static,
-    ) -> Result<(), AppError>;
+    ) -> Result<(), SubtensorError>;
 
     /// Fetches storage from the blockchain.
     ///
@@ -81,13 +85,13 @@ pub trait ChainInteraction {
     /// # Returns
     ///
     /// A Result containing an Option<T> if successful (None if the storage is empty),
-    /// or an AppError if the fetch fails.
+    /// or an SubtensorError if the fetch fails.
     async fn fetch_storage<T>(
         &self,
         address: impl subxt::storage::Address<IsFetchable = subxt::custom_values::Yes, Target = T>
             + Send
             + Sync,
-    ) -> Result<Option<T>, AppError>
+    ) -> Result<Option<T>, SubtensorError>
     where
         T: DecodeWithMetadata + Send + 'static;
 
@@ -103,12 +107,12 @@ pub trait ChainInteraction {
     /// # Returns
     ///
     /// A Result containing the decoded return value of type T if successful,
-    /// or an AppError if the call fails.
+    /// or an SubtensorError if the call fails.
     async fn call_runtime_api<T>(
         &self,
         method: &str,
         params: Vec<subxt::dynamic::Value>,
-    ) -> Result<T, AppError>
+    ) -> Result<T, SubtensorError>
     where
         T: DecodeWithMetadata + Decode + Send + 'static;
 
@@ -124,12 +128,12 @@ pub trait ChainInteraction {
     /// # Returns
     ///
     /// A Result containing the deserialized return value of type T if successful,
-    /// or an AppError if the call fails.
+    /// or an SubtensorError if the call fails.
     async fn call_rpc<T: serde::de::DeserializeOwned>(
         &self,
         method: &str,
         params: RpcParams,
-    ) -> Result<T, AppError>;
+    ) -> Result<T, SubtensorError>;
 }
 
 /// Represents a connection to the Subtensor blockchain.
@@ -157,20 +161,20 @@ impl Subtensor {
     /// # Returns
     ///
     /// A Result containing a new Subtensor instance if successful,
-    /// or an AppError if the connection or setup fails.
-    pub async fn new(chain_endpoint: &str, coldkey: &str) -> Result<Self, AppError> {
+    /// or an SubtensorError if the connection or setup fails.
+    pub async fn new(chain_endpoint: &str, coldkey: &str) -> Result<Self, SubtensorError> {
         let client = OnlineClient::<SubstrateConfig>::from_url(chain_endpoint)
             .await
-            .map_err(|e| AppError::ConnectionError(e.to_string()))?;
+            .map_err(|e| SubtensorError::ConnectionError(e.to_string()))?;
 
         let coldkey_pair = sr25519::Pair::from_string(coldkey, None)
-            .map_err(|_| AppError::InvalidInput("Invalid coldkey format".into()))?;
+            .map_err(|_| SubtensorError::InvalidInput("Invalid coldkey format".into()))?;
 
         let signer = PairSigner::new(coldkey_pair);
         let api = client.runtime_api();
         let rpc = RpcClient::from_url(chain_endpoint)
             .await
-            .map_err(|e| AppError::ConnectionError(e.to_string()))?;
+            .map_err(|e| SubtensorError::ConnectionError(e.to_string()))?;
 
         Ok(Self {
             client: Arc::new(client),
@@ -178,6 +182,54 @@ impl Subtensor {
             api,
             rpc,
         })
+    }
+
+    /// Fetches the balance for a given SS58 address.
+    ///
+    /// # Arguments
+    ///
+    /// * `ss58_address` - The SS58 encoded address to fetch the balance for.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<f64, SubtensorError>` - The balance as a f64 or an error.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let balance = subtensor.fetch_balance("5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY").await?;
+    /// println!("Balance: {}", balance);
+    /// ```
+    pub async fn fetch_balance(&self, ss58_address: &str) -> Result<f64, SubtensorError> {
+        // Convert SS58 address to AccountId32
+        let account_id = AccountId32::from_str(ss58_address)
+            .map_err(|_| SubtensorError::InvalidInput("Invalid SS58 address".into()))?;
+
+        // Convert AccountId32 to subxt::dynamic::Value
+        let account_id_value =
+            DynamicValue::from_bytes(<AccountId32 as AsRef<[u8]>>::as_ref(&account_id));
+
+        // Fetch the account info using the existing storage query mechanism
+        let account_info = self
+            .fetch_storage(subxt::dynamic::storage(
+                "System",
+                "Account",
+                vec![account_id_value],
+            ))
+            .await?
+            .ok_or(SubtensorError::NotFound("Account not found".into()))?;
+
+        // Decode the account info
+        let account_data: AccountData<u128> = AccountData::decode(&mut account_info.encoded())
+            .map_err(|_| SubtensorError::DecodingError("Failed to decode account data".into()))?;
+
+        // Extract the free balance from the account data
+        let free_balance = account_data.free;
+
+        // Convert from Planck to Tao
+        let balance = free_balance as f64 / 1_000_000_000_000.0;
+
+        Ok(balance)
     }
 }
 
@@ -195,11 +247,11 @@ impl ChainInteraction for Subtensor {
     /// # Returns
     ///
     /// A Result containing () if the extrinsic is successfully included in a block,
-    /// or an AppError if the submission or inclusion fails.
+    /// or an SubtensorError if the submission or inclusion fails.
     async fn submit_extrinsic(
         &self,
         call: impl subxt::tx::Payload + Send + Sync + 'static,
-    ) -> Result<(), AppError> {
+    ) -> Result<(), SubtensorError> {
         let result = self
             .client
             .tx()
@@ -227,13 +279,13 @@ impl ChainInteraction for Subtensor {
     /// # Returns
     ///
     /// A Result containing an Option<T> if successful (None if the storage is empty),
-    /// or an AppError if the fetch fails.
+    /// or an SubtensorError if the fetch fails.
     async fn fetch_storage<T>(
         &self,
         address: impl subxt::storage::Address<IsFetchable = subxt::custom_values::Yes, Target = T>
             + Send
             + Sync,
-    ) -> Result<Option<T>, AppError>
+    ) -> Result<Option<T>, SubtensorError>
     where
         T: DecodeWithMetadata + Send + 'static,
     {
@@ -261,12 +313,12 @@ impl ChainInteraction for Subtensor {
     /// # Returns
     ///
     /// A Result containing the decoded return value of type T if successful,
-    /// or an AppError if the call or decoding fails.
+    /// or an SubtensorError if the call or decoding fails.
     async fn call_runtime_api<T>(
         &self,
         method: &str,
         params: Vec<subxt::dynamic::Value>,
-    ) -> Result<T, AppError>
+    ) -> Result<T, SubtensorError>
     where
         T: Decode + Send + 'static,
     {
@@ -287,13 +339,13 @@ impl ChainInteraction for Subtensor {
                 v.encode_with_metadata(type_id, &metadata, &mut buffer)?;
                 Ok(buffer)
             })
-            .collect::<Result<Vec<Vec<u8>>, AppError>>()?;
+            .collect::<Result<Vec<Vec<u8>>, SubtensorError>>()?;
         let flat_params: Vec<u8> = params_bytes.into_iter().flatten().collect();
 
         let result_bytes: Vec<u8> = runtime_api.call_raw(method, Some(&flat_params)).await?;
 
         let result = T::decode(&mut &result_bytes[..])
-            .map_err(|e| AppError::DecodingError(e.to_string()))?;
+            .map_err(|e| SubtensorError::DecodingError(e.to_string()))?;
 
         Ok(result)
     }
@@ -310,15 +362,24 @@ impl ChainInteraction for Subtensor {
     /// # Returns
     ///
     /// A Result containing the deserialized return value of type T if successful,
-    /// or an AppError if the call fails.
+    /// or an SubtensorError if the call fails.
     async fn call_rpc<T: serde::de::DeserializeOwned>(
         &self,
         method: &str,
         params: RpcParams,
-    ) -> Result<T, AppError> {
+    ) -> Result<T, SubtensorError> {
         self.rpc
             .request(method, params)
             .await
-            .map_err(|e| AppError::RpcError(e.to_string()))
+            .map_err(|e| SubtensorError::RpcError(e.to_string()))
     }
+}
+
+// Define the AccountData struct to match the structure of the account info in storage
+#[derive(Decode)]
+struct AccountData<Balance> {
+    free: Balance,
+    reserved: Balance,
+    misc_frozen: Balance,
+    fee_frozen: Balance,
 }

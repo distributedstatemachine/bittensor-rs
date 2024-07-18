@@ -1,3 +1,5 @@
+use std::ops::Sub;
+
 use subxt::error::EncodeError;
 
 /// Documentation for the AppError enum
@@ -23,7 +25,7 @@ use subxt::error::EncodeError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum AppError {
+pub enum SubtensorError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
     #[error("Invalid input: {0}")]
@@ -72,13 +74,15 @@ pub enum AppError {
     DecodingError(String),
     #[error("RPC error: {0}")]
     RpcError(String),
+    #[error("Not found: {0}")]
+    NotFound(String),
 }
 
 // TODO: Implement custom From traits for specific error conversions
 // TODO: Add unit tests for error handling scenarios
 
-impl From<EncodeError> for AppError {
+impl From<EncodeError> for SubtensorError {
     fn from(error: EncodeError) -> Self {
-        AppError::EncodingError(error.to_string())
+        SubtensorError::EncodingError(error.to_string())
     }
 }
