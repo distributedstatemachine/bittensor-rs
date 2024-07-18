@@ -24,8 +24,6 @@ use thiserror::Error;
 pub enum AppError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
-    // #[error("Crossterm error: {0}")]
-    // Crossterm(#[from] crossterm::ErrorKind),
     #[error("Invalid input: {0}")]
     InvalidInput(String),
     #[error("Network error: {0}")]

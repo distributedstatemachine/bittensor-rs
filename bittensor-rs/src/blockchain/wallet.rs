@@ -6,7 +6,6 @@ use aes_gcm::KeyInit;
 use aes_gcm::{Aes256Gcm, Key};
 use base64::{engine::general_purpose, Engine as _};
 use bip39::Mnemonic;
-// use parking_lot::Mutex;
 use rand::rngs::OsRng;
 use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
@@ -16,17 +15,19 @@ use sp_core::{
     crypto::{Pair as PairT, Ss58Codec},
     sr25519,
 };
+use std::error::Error;
 use std::fs::{self};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio::sync::Mutex;
 
-use crate::handlers::wallet::SendableResult;
-use log::{error, info};
 use sp_core::crypto_bytes::SignatureTag;
 use sp_core::sr25519::{Public, Signature};
 use sp_core::ByteArray;
+
+pub type SendableResult = Result<(), Box<dyn std::error::Error + Send + Sync>>;
+use log::{error, info};
 
 /// Represents a wallet in the Bittensor network
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -45,8 +46,6 @@ pub struct Wallet {
     /// Indicates if this wallet is currently selected
     pub selected: bool,
 }
-
-// impl Copy for Wallet {}
 
 impl Wallet {
     /// Creates a new wallet with the given name and password
@@ -94,7 +93,7 @@ impl Wallet {
         name: &str,
         password: &str,
         log_tx: Arc<Mutex<mpsc::Sender<String>>>,
-    ) -> SendableResult {
+    ) -> Result<Self, Box<dyn Error + Send + Sync>> {
         // Send initial log message
         Self::send_log(&log_tx, "Creating wallet...").await;
         info!("Creating wallet: {}", name);
@@ -102,12 +101,9 @@ impl Wallet {
         // Generate random entropy
         Self::send_log(&log_tx, "Generating entropy...").await;
         let mut entropy: [u8; 16] = [0u8; 16];
-        match thread_rng().try_fill(&mut entropy) {
-            Ok(_) => {}
-            Err(e) => {
-                error!("Failed to generate entropy: {}", e);
-                return SendableResult(Err(Box::new(AppError::EntropyGenerationError)));
-            }
+        if let Err(e) = thread_rng().try_fill(&mut entropy) {
+            error!("Failed to generate entropy: {}", e);
+            return Err(Box::new(AppError::EntropyGenerationError));
         }
 
         // Generate a new mnemonic phrase
@@ -116,7 +112,7 @@ impl Wallet {
             Ok(m) => m,
             Err(e) => {
                 error!("Failed to create mnemonic: {}", e);
-                return SendableResult(Err(Box::new(AppError::MnemonicError)));
+                return Err(Box::new(AppError::MnemonicError));
             }
         };
 
@@ -126,20 +122,12 @@ impl Wallet {
 
         // Encrypt the seed
         Self::send_log(&log_tx, "Encrypting seed...").await;
-        let (encrypted_seed, nonce) = match Self::encrypt_seed(&seed, password) {
-            Ok(result) => result,
-            Err(e) => return SendableResult(Err(Box::new(e))),
-        };
+        let (encrypted_seed, nonce) = Self::encrypt_seed(&seed, password)?;
 
         // Generate key pair from seed
         Self::send_log(&log_tx, "Generating key pair...").await;
-        let _pair: sr25519::Pair = match sr25519::Pair::from_seed_slice(&seed[..32]) {
-            Ok(p) => p,
-            Err(_) => {
-                error!("Failed to generate key pair from seed");
-                return SendableResult(Err(Box::new(AppError::InvalidSeed)));
-            }
-        };
+        let _pair: sr25519::Pair = sr25519::Pair::from_seed_slice(&seed[..32])
+            .map_err(|_| AppError::InvalidSeed)?;
 
         // TODO: Consider adding error handling for specific seed-related errors
         // TODO: Implement key pair validation to ensure it was generated correctly
@@ -161,19 +149,15 @@ impl Wallet {
 
         // Save the wallet to storage
         Self::send_log(&log_tx, "Saving wallet to storage...").await;
-        if let Err(e) = wallet.save().await {
-            return SendableResult(Err(Box::new(e)));
-        }
+        wallet.save().await?;
 
         // Fetch initial balance
         Self::send_log(&log_tx, "Fetching initial balance...").await;
-        if let Err(e) = wallet.fetch_balance().await {
-            return SendableResult(Err(Box::new(e)));
-        }
+        wallet.fetch_balance().await?;
 
         Self::send_log(&log_tx, "Wallet created successfully!").await;
         info!("Wallet created successfully: {}", name);
-        SendableResult(Ok(wallet))
+        Ok(wallet)
     }
 
     /// Helper function to send log messages

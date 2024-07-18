@@ -1,15 +1,12 @@
-[package]
-name = "bittensor-rs"
-version = "0.1.0"
-edition = "2021"
+[workspace]
+members = ["bittensor-rs", "lightning-tensor"]
+resolver = "2"
 
-[dependencies]
+[workspace.dependencies]
 clap = "4.5.9"
-crossterm = { version = "0.27", features = ["event-stream"] }
 codec = { package = "parity-scale-codec", version = "3.6.1", default-features = false, features = [
     "derive",
 ] }
-ratatui = "0.27.0"
 sp-core = "34.0.0"
 substrate-api-client = { version = "0.18.0", features = ["ws-client"] }
 thiserror = "1.0.62"
