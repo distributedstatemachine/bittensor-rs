@@ -2,20 +2,16 @@
 extern crate lazy_static;
 use log::info;
 use std::sync::Arc;
-use subxt::backend::Backend;
-use subxt::ext::scale_encode::EncodeAsType;
-// use subxt::ext::scale_encode::EncodeError;
 
-use subxt::backend::rpc::RpcClient;
-use subxt::backend::rpc::RpcParams;
-use subxt::ext::sp_core::H256;
-use subxt::ext::sp_core::{sr25519, Pair};
-// use subxt::metadata::types::TypeId;
 use codec::Decode;
 use scale_info::prelude::any::TypeId;
 use std::any::Any;
 use std::collections::HashMap;
 use std::sync::Mutex;
+use subxt::backend::rpc::RpcClient;
+use subxt::backend::rpc::RpcParams;
+use subxt::ext::sp_core::H256;
+use subxt::ext::sp_core::{sr25519, Pair};
 use subxt::metadata::DecodeWithMetadata;
 use subxt::metadata::EncodeWithMetadata;
 use subxt::runtime_api::RuntimeApiClient;
@@ -33,6 +29,18 @@ lazy_static! {
     static ref TYPE_MAP: Mutex<HashMap<TypeId, u32>> = Mutex::new(HashMap::new());
 }
 
+/// Gets or assigns a unique identifier for a given TypeId.
+///
+/// This function is used internally to manage type identifiers for encoding and decoding
+/// purposes. It ensures that each unique TypeId is associated with a unique u32 value.
+///
+/// # Arguments
+///
+/// * `type_id` - The TypeId for which to get or assign an identifier.
+///
+/// # Returns
+///
+/// A u32 value representing the unique identifier for the given TypeId.
 fn get_type_id(type_id: TypeId) -> u32 {
     let mut map = TYPE_MAP.lock().unwrap();
     let len = map.len();
@@ -42,21 +50,21 @@ fn get_type_id(type_id: TypeId) -> u32 {
 #[async_trait::async_trait]
 /// Trait defining interactions with a blockchain.
 ///
-/// This trait provides methods for submitting extrinsics and fetching storage
-/// from a blockchain.
-///
-
-#[async_trait::async_trait]
+/// This trait provides methods for submitting extrinsics, fetching storage,
+/// calling runtime APIs, and performing RPC calls on a blockchain network.
 pub trait ChainInteraction {
     /// Submits an extrinsic to the blockchain.
     ///
+    /// This method signs and submits an extrinsic (a call to the blockchain)
+    /// and waits for it to be included in a block.
+    ///
     /// # Arguments
     ///
-    /// * `call` - The extrinsic to submit, implementing `subxt::tx::TxPayload`.
+    /// * `call` - The payload of the extrinsic to be submitted.
     ///
     /// # Returns
     ///
-    /// A `Result` indicating success or an `AppError`.
+    /// A Result containing () if successful, or an AppError if the submission fails.
     async fn submit_extrinsic(
         &self,
         call: impl subxt::tx::Payload + Send + Sync + 'static,
@@ -64,17 +72,16 @@ pub trait ChainInteraction {
 
     /// Fetches storage from the blockchain.
     ///
-    /// # Type Parameters
-    ///
-    /// * `T` - The type of data to decode from storage, must implement `codec::Decode`.
+    /// This method retrieves data from the blockchain's storage based on the provided address.
     ///
     /// # Arguments
     ///
-    /// * `address` - The storage address to fetch from, implementing `subxt::storage::Address<T>`.
+    /// * `address` - The storage address to fetch data from.
     ///
     /// # Returns
     ///
-    /// A `Result` containing an `Option<T>` or an `AppError`.
+    /// A Result containing an Option<T> if successful (None if the storage is empty),
+    /// or an AppError if the fetch fails.
     async fn fetch_storage<T>(
         &self,
         address: impl subxt::storage::Address<IsFetchable = subxt::custom_values::Yes, Target = T>
@@ -84,16 +91,19 @@ pub trait ChainInteraction {
     where
         T: DecodeWithMetadata + Send + 'static;
 
-    /// Calls a runtime API method.
+    /// Calls a runtime API method on the blockchain.
+    ///
+    /// This method allows interaction with custom runtime APIs defined in the blockchain.
     ///
     /// # Arguments
     ///
     /// * `method` - The name of the runtime API method to call.
-    /// * `params` - The parameters to pass to the method.
+    /// * `params` - A vector of dynamic values representing the parameters for the method call.
     ///
     /// # Returns
     ///
-    /// A `Result` containing the decoded result or an `AppError`.
+    /// A Result containing the decoded return value of type T if successful,
+    /// or an AppError if the call fails.
     async fn call_runtime_api<T>(
         &self,
         method: &str,
@@ -102,16 +112,19 @@ pub trait ChainInteraction {
     where
         T: DecodeWithMetadata + Decode + Send + 'static;
 
-    /// Performs an RPC call.
+    /// Performs an RPC call to the blockchain node.
+    ///
+    /// This method allows making raw RPC calls to the blockchain node.
     ///
     /// # Arguments
     ///
     /// * `method` - The name of the RPC method to call.
-    /// * `params` - The parameters to pass to the method.
+    /// * `params` - The parameters for the RPC call.
     ///
     /// # Returns
     ///
-    /// A `Result` containing the JSON result or an `AppError`.
+    /// A Result containing the deserialized return value of type T if successful,
+    /// or an AppError if the call fails.
     async fn call_rpc<T: serde::de::DeserializeOwned>(
         &self,
         method: &str,
@@ -119,9 +132,10 @@ pub trait ChainInteraction {
     ) -> Result<T, AppError>;
 }
 
-// TODO: Consider adding a method for batch transactions to optimize multiple calls.
-// TODO: Implement error handling for specific blockchain errors (e.g., out of gas, invalid nonce).
-
+/// Represents a connection to the Subtensor blockchain.
+///
+/// This struct provides methods to interact with the Subtensor blockchain,
+/// including submitting transactions, querying storage, and making RPC calls.
 pub struct Subtensor {
     client: Arc<OnlineClient<SubstrateConfig>>,
     signer: Arc<PairSigner<SubstrateConfig, sr25519::Pair>>,
@@ -130,6 +144,20 @@ pub struct Subtensor {
 }
 
 impl Subtensor {
+    /// Creates a new Subtensor instance.
+    ///
+    /// This method establishes a connection to the Subtensor blockchain and sets up
+    /// the necessary components for interaction.
+    ///
+    /// # Arguments
+    ///
+    /// * `chain_endpoint` - The WebSocket URL of the Subtensor node.
+    /// * `coldkey` - The coldkey (private key) used for signing transactions.
+    ///
+    /// # Returns
+    ///
+    /// A Result containing a new Subtensor instance if successful,
+    /// or an AppError if the connection or setup fails.
     pub async fn new(chain_endpoint: &str, coldkey: &str) -> Result<Self, AppError> {
         let client = OnlineClient::<SubstrateConfig>::from_url(chain_endpoint)
             .await
@@ -155,6 +183,19 @@ impl Subtensor {
 
 #[async_trait::async_trait]
 impl ChainInteraction for Subtensor {
+    /// Submits an extrinsic to the Subtensor blockchain.
+    ///
+    /// This method signs the provided call with the instance's signer,
+    /// submits it to the blockchain, and waits for it to be included in a block.
+    ///
+    /// # Arguments
+    ///
+    /// * `call` - The payload of the extrinsic to be submitted.
+    ///
+    /// # Returns
+    ///
+    /// A Result containing () if the extrinsic is successfully included in a block,
+    /// or an AppError if the submission or inclusion fails.
     async fn submit_extrinsic(
         &self,
         call: impl subxt::tx::Payload + Send + Sync + 'static,
@@ -174,6 +215,19 @@ impl ChainInteraction for Subtensor {
 
         Ok(())
     }
+
+    /// Fetches storage from the Subtensor blockchain.
+    ///
+    /// This method retrieves data from the blockchain's storage at the latest block.
+    ///
+    /// # Arguments
+    ///
+    /// * `address` - The storage address to fetch data from.
+    ///
+    /// # Returns
+    ///
+    /// A Result containing an Option<T> if successful (None if the storage is empty),
+    /// or an AppError if the fetch fails.
     async fn fetch_storage<T>(
         &self,
         address: impl subxt::storage::Address<IsFetchable = subxt::custom_values::Yes, Target = T>
@@ -194,6 +248,20 @@ impl ChainInteraction for Subtensor {
         Ok(value)
     }
 
+    /// Calls a runtime API method on the Subtensor blockchain.
+    ///
+    /// This method encodes the provided parameters, makes a call to the specified
+    /// runtime API method, and decodes the result.
+    ///
+    /// # Arguments
+    ///
+    /// * `method` - The name of the runtime API method to call.
+    /// * `params` - A vector of dynamic values representing the parameters for the method call.
+    ///
+    /// # Returns
+    ///
+    /// A Result containing the decoded return value of type T if successful,
+    /// or an AppError if the call or decoding fails.
     async fn call_runtime_api<T>(
         &self,
         method: &str,
@@ -209,10 +277,8 @@ impl ChainInteraction for Subtensor {
 
         let runtime_api = self.api.at(block_hash);
 
-        // Get the metadata
         let metadata = self.client.metadata();
 
-        // Encode parameters using EncodeAsType
         let params_bytes = params
             .iter()
             .map(|v| {
@@ -232,6 +298,19 @@ impl ChainInteraction for Subtensor {
         Ok(result)
     }
 
+    /// Performs an RPC call to the Subtensor blockchain node.
+    ///
+    /// This method makes a raw RPC call to the connected Subtensor node.
+    ///
+    /// # Arguments
+    ///
+    /// * `method` - The name of the RPC method to call.
+    /// * `params` - The parameters for the RPC call.
+    ///
+    /// # Returns
+    ///
+    /// A Result containing the deserialized return value of type T if successful,
+    /// or an AppError if the call fails.
     async fn call_rpc<T: serde::de::DeserializeOwned>(
         &self,
         method: &str,
@@ -243,8 +322,3 @@ impl ChainInteraction for Subtensor {
             .map_err(|e| AppError::RpcError(e.to_string()))
     }
 }
-
-// // Re-export important structs and traits
-// pub use neurons::{AxonInfo, PrometheusInfo};
-// pub use subnets::{SubnetHyperparams, SubnetInfo};
-// pub use wallet::Wallet;

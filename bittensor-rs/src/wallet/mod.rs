@@ -48,47 +48,59 @@ pub struct Wallet {
 }
 
 impl Wallet {
-    /// Creates a new wallet with the given name and password
+    /// Creates a new wallet with the given name and password, and provides logging functionality.
+    ///
+    /// This function generates a new wallet by creating a mnemonic phrase, deriving a seed from it,
+    /// and then encrypting the seed with the provided password. It also generates a key pair from the seed.
+    /// Throughout the process, it sends log messages to the provided channel.
     ///
     /// # Arguments
     ///
-    /// * `name` - The name of the wallet
-    /// * `password` - The password to encrypt the wallet
+    /// * `name` - A string slice that holds the name of the wallet.
+    /// * `password` - A string slice that holds the password used to encrypt the wallet's seed.
+    /// * `log_tx` - An `Arc<Mutex<mpsc::Sender<String>>>` that represents a channel for sending log messages.
     ///
     /// # Returns
     ///
-    /// * `Result<Self, AppError>` - The created wallet or an error
+    /// * `Result<Self, Box<dyn Error + Send + Sync>>` - The created wallet wrapped in `Ok` if successful,
+    ///   or an error wrapped in `Err` if any step of the wallet creation process fails.
     ///
-    /// # Example
+    /// # Errors
     ///
-    /// Creates a new wallet with the given name and password
-    ///
-    /// # Arguments
-    ///
-    /// * `name` - The name of the wallet
-    /// * `password` - The password to encrypt the wallet
-    /// * `log_tx` - A channel for sending log messages
-    ///
-    /// # Returns
-    ///
-    /// * `Result<Self, AppError>` - The created wallet or an error
+    /// This function can return errors if:
+    /// - Entropy generation fails
+    /// - Mnemonic creation fails
+    /// - Seed encryption fails
+    /// - Key pair generation from the seed fails
     ///
     /// # Example
     ///
     /// ```
-    /// use blockchain::wallet::Wallet;
+    /// use bittensor_rs::wallet::Wallet;
     /// use tokio::sync::mpsc;
     /// use std::sync::Arc;
-    /// use parking_lot::Mutex;
+    /// use tokio::sync::Mutex;
     ///
     /// #[tokio::main]
     /// async fn main() {
-    ///     let (tx, _rx) = mpsc::channel(100);
+    ///     let (tx, mut rx) = mpsc::channel(100);
     ///     let log_tx = Arc::new(Mutex::new(tx));
-    ///     let wallet = Wallet::create("my_wallet", "password123", log_tx).await.unwrap();
+    ///     
+    ///     // Create the wallet
+    ///     let wallet = Wallet::create("my_wallet", "password123", log_tx.clone()).await.unwrap();
     ///     println!("Wallet created: {}", wallet.name);
+    ///     
+    ///     // Print log messages
+    ///     while let Some(log_message) = rx.recv().await {
+    ///         println!("Log: {}", log_message);
+    ///     }
     /// }
     /// ```
+    ///
+    /// # Note
+    ///
+    /// This function performs several cryptographic operations and should be used with caution.
+    /// Ensure that the password is sufficiently strong and kept secure.
     pub async fn create(
         name: &str,
         password: &str,
@@ -494,8 +506,6 @@ pub fn detect_wallets(wallet_dir: &PathBuf) -> Vec<Wallet> {
         }
     }
     wallets
-}
-
-// TODO: Implement key derivation (e.g., BIP44) for multiple accounts per wallet
-// TODO: Add support for hardware wallets
-// NOTE: Consider adding a method to change the wallet password
+} // TODO: Implement key derivation (e.g., BIP44) for multiple accounts per wallet
+  // TODO: Add support for hardware wallets
+  // NOTE: Consider adding a method to change the wallet password
