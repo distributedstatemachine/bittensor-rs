@@ -19,3 +19,5 @@ dirs.workspace = true
 futures.workspace = true
 codec.workspace = true
 hex.workspace = true
+toml = "0.8.15"
+fs = "0.0.5"

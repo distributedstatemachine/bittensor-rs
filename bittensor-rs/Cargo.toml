@@ -30,3 +30,6 @@ simplelog = { workspace = true }
 parking_lot = { workspace = true }
 futures = { workspace = true }
 subxt = { workspace = true }
+scale-value = "0.16.0"
+async-trait = "0.1.81"
+lazy_static = "1.5.0"

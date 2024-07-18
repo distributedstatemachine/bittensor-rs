@@ -1,2 +1,4 @@
 /target
 bittensor-rs.log
+.vscode
+config.toml

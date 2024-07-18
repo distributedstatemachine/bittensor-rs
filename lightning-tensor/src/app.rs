@@ -1,19 +1,20 @@
-use bittensor_rs::blockchain::subnets::SubnetInfo;
-use bittensor_rs::blockchain::wallet::detect_wallets;
-use bittensor_rs::blockchain::wallet::Wallet;
-use bittensor_rs::blockchain::BittensorApi;
 use bittensor_rs::errors::AppError;
+use bittensor_rs::subnets::SubnetInfo;
+use bittensor_rs::wallet::detect_wallets;
+use bittensor_rs::wallet::Wallet;
+use bittensor_rs::Subtensor;
+use futures::executor::block_on;
+use futures::TryFutureExt;
 
 use crate::handlers::wallet::SendableResult;
 use crate::ui::AnimationState;
 use crossterm::event::{self, Event, KeyCode};
 use log::debug;
-// use parking_lot::Mutex;
 use ratatui::backend::Backend;
 use ratatui::widgets::ListState;
 use ratatui::{Frame, Terminal};
 use sp_core::crypto::AccountId32;
-// use tokio::task::futures;
+use std::ops::Sub;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
@@ -51,7 +52,7 @@ pub enum AppState {
 pub struct App {
     pub state: AppState,
     pub should_quit: bool,
-    pub bittensor_api: BittensorApi,
+    pub subtensor: Subtensor,
     pub subnets: Vec<SubnetInfo<AccountId32>>,
     pub selected_subnet: Option<usize>,
     pub messages: Arc<Mutex<Vec<String>>>,
@@ -83,11 +84,17 @@ impl Default for App {
             .join(".bittensor-rs")
             .join("wallets");
 
+        let config_file = Self::get_config_path().unwrap();
+        let coldkey = Self::read_coldkey_from_config(&config_file).unwrap();
+
         Self {
             state: AppState::Home,
             should_quit: false,
-            bittensor_api: BittensorApi::new(DEFAULT_NETWORK_URL)
-                .expect("Failed to initialize BittensorApi"),
+            subtensor: block_on(Subtensor::new(DEFAULT_NETWORK_URL, &coldkey)).unwrap_or_else(
+                |e| {
+                    panic!("Failed to initialize Subtensor: {}", e);
+                },
+            ),
             subnets: Vec::new(),
             selected_subnet: None,
             messages: Arc::new(Mutex::new(Vec::new())),
@@ -117,11 +124,19 @@ impl App {
             .join(".bittensor-rs")
             .join("wallets");
 
+        let config_file = Self::get_config_path()?;
+        let coldkey = Self::read_coldkey_from_config(&config_file)?;
+        // let coldkey = Self::read_coldkey_from_config(&config_file)?;
+
+
         let mut app = App {
             state: AppState::Home,
             should_quit: false,
-            bittensor_api: BittensorApi::new(DEFAULT_NETWORK_URL)
-                .expect("Failed to initialize BittensorApi"),
+            subtensor: block_on(Subtensor::new(DEFAULT_NETWORK_URL, &coldkey)).unwrap_or_else(
+                |e| {
+                    panic!("Failed to initialize Subtensor: {}", e);
+                },
+            ),
             subnets: Vec::new(),
             selected_subnet: None,
             messages: Arc::new(Mutex::new(Vec::new())),
@@ -146,17 +161,17 @@ impl App {
         Ok(app)
     }
 
-    /// Fetches the list of subnets from the blockchain
-    pub async fn fetch_subnets(&mut self) -> Result<(), AppError> {
-        self.subnets = self.bittensor_api.get_subnets_info().await?;
-        Ok(())
-    }
+    // /// Fetches the list of subnets from the blockchain
+    // pub async fn fetch_subnets(&mut self) -> Result<(), AppError> {
+    //     self.subnets = self.subtensor.get_subnets_info().await?;
+    //     Ok(())
+    // }
 
-    /// Fetches the lock cost for a specific subnet
-    pub async fn fetch_subnet_lock_cost(&mut self, netuid: u16) -> Result<u64, AppError> {
-        let subnet_info = self.bittensor_api.get_subnet_info(netuid).await?;
-        Ok(subnet_info.burn.into())
-    }
+    // /// Fetches the lock cost for a specific subnet
+    // pub async fn fetch_subnet_lock_cost(&mut self, netuid: u16) -> Result<u64, AppError> {
+    //     let subnet_info = self.bittensor_api.get_subnet_info(netuid).await?;
+    //     Ok(subnet_info.burn.into())
+    // }
 
     /// Updates the lock cost for a specific subnet in the local list
     pub fn update_subnet_lock_cost(&mut self, netuid: u16, lock_cost: u64) {
@@ -254,5 +269,35 @@ impl App {
                 }
             }
         }
+    }
+
+    fn get_config_path() -> Result<PathBuf, AppError> {
+        let current_dir = std::env::current_dir().map_err(|e| {
+            AppError::ConfigError(format!("Failed to get current directory: {}", e))
+        })?;
+
+        let config_file = current_dir.join("config.toml");
+
+        if !config_file.exists() {
+            return Err(AppError::ConfigError(
+                "config.toml not found in workspace root".into(),
+            ));
+        }
+
+        Ok(config_file)
+    }
+
+    // TODO: Move to utlity Crate
+    fn read_coldkey_from_config(config_file: &PathBuf) -> Result<String, AppError> {
+        let config_str = std::fs::read_to_string(config_file)
+            .map_err(|e| AppError::ConfigError(format!("Failed to read config file: {}", e)))?;
+
+        let config: toml::Value = toml::from_str(&config_str)
+            .map_err(|e| AppError::ConfigError(format!("Failed to parse TOML: {}", e)))?;
+
+        config["coldkey"]
+            .as_str()
+            .ok_or_else(|| AppError::ConfigError("Coldkey not found in config".into()))
+            .map(String::from)
     }
 }

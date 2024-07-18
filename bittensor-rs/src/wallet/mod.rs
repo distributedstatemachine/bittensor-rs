@@ -126,8 +126,8 @@ impl Wallet {
 
         // Generate key pair from seed
         Self::send_log(&log_tx, "Generating key pair...").await;
-        let _pair: sr25519::Pair = sr25519::Pair::from_seed_slice(&seed[..32])
-            .map_err(|_| AppError::InvalidSeed)?;
+        let _pair: sr25519::Pair =
+            sr25519::Pair::from_seed_slice(&seed[..32]).map_err(|_| AppError::InvalidSeed)?;
 
         // TODO: Consider adding error handling for specific seed-related errors
         // TODO: Implement key pair validation to ensure it was generated correctly

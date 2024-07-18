@@ -1,3 +1,5 @@
+use subxt::error::EncodeError;
+
 /// Documentation for the AppError enum
 ///
 /// This enum represents all possible errors that can occur in the application.
@@ -60,7 +62,23 @@ pub enum AppError {
     EntropyGenerationError,
     #[error("IO error: {0}")]
     IoError(std::io::Error),
+    #[error("Connection error: {0}")]
+    ConnectionError(String),
+    #[error("Subxt error: {0}")]
+    SubxtError(#[from] subxt::Error),
+    #[error("Encoding error: {0}")]
+    EncodingError(String),
+    #[error("Decoding error: {0}")]
+    DecodingError(String),
+    #[error("RPC error: {0}")]
+    RpcError(String),
 }
 
 // TODO: Implement custom From traits for specific error conversions
 // TODO: Add unit tests for error handling scenarios
+
+impl From<EncodeError> for AppError {
+    fn from(error: EncodeError) -> Self {
+        AppError::EncodingError(error.to_string())
+    }
+}

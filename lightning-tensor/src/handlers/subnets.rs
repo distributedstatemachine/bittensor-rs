@@ -48,7 +48,7 @@ pub async fn handle_input(app: &mut App, input: KeyCode) -> Result<(), AppError>
         KeyCode::Char('l') => {
             if let Some(selected) = app.selected_subnet {
                 let netuid = app.subnets[selected].netuid;
-                let lock_cost = app.fetch_subnet_lock_cost(netuid.into()).await?;
+                let lock_cost = app.update_subnet_lock_cost(netuid.into(), 1);
                 println!("Lock cost for subnet {:?}: {:?}", netuid, lock_cost);
             }
         }

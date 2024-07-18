@@ -1,5 +1,5 @@
 use crate::app::{App, AppState, WalletOperation};
-use bittensor_rs::blockchain::wallet::Wallet;
+use bittensor_rs::wallet::Wallet;
 use bittensor_rs::errors::AppError;
 use crossterm::event::KeyCode;
 use log::{debug, error};
