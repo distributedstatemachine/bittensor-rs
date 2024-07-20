@@ -13,11 +13,11 @@
 /// - Implement logging for better error tracking
 /// Every validator uses wallet , metagraph maybe axon / dendrites
 mod app;
+pub mod errors;
 mod handlers;
 mod ui;
 
-use bittensor_rs::errors::AppError;
-
+use errors::AppError;
 
 use app::App;
 use crossterm::{

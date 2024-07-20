@@ -1,5 +1,5 @@
 use crate::app::{App, AppState};
-use bittensor_rs::errors::AppError;
+use crate::errors::AppError;
 ///! Documentation for the subnets input handler
 ///
 /// This function handles user input when in the Subnets state.

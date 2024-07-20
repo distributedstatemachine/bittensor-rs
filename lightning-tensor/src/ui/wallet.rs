@@ -9,6 +9,10 @@ use ratatui::{
 // use crate::blockchain::wallet::Wallet;
 // use crate::errors::AppError;
 use crate::App;
+use bittensor_wallet::keypair::Keypair;
+use bittensor_wallet::Wallet;
+use bittensor_wallet::WalletError;
+
 // use log::debug;
 
 /// Renders the wallet interface
@@ -108,15 +112,15 @@ fn render_wallet_list(app: &App) -> List<'static> {
 fn render_wallet_info(app: &App) -> Paragraph<'_> {
     let wallet_info = if let Some(selected_index) = app.selected_wallet {
         if let Some(selected_wallet) = app.wallets.get(selected_index) {
-            match selected_wallet.get_address(&app.wallet_password) {
-                Ok(address) => vec![
+            match get_wallet_keypair(selected_wallet, &app.wallet_password) {
+                Ok(keypair) => vec![
                     Line::from(vec![
                         Span::raw("Name: "),
                         Span::styled(&selected_wallet.name, Style::default().fg(Color::Yellow)),
                     ]),
                     Line::from(vec![
                         Span::raw("Address: "),
-                        Span::styled(address, Style::default().fg(Color::Cyan)),
+                        Span::styled(keypair.public.to_string(), Style::default().fg(Color::Cyan)),
                     ]),
                     Line::from(vec![
                         Span::raw("Balance: "),
@@ -134,7 +138,7 @@ fn render_wallet_info(app: &App) -> Paragraph<'_> {
                     Line::from("Press 'p' to change the wallet password"),
                 ],
                 Err(_) => vec![
-                    Line::from("Failed to get wallet address."),
+                    Line::from("Failed to decrypt wallet."),
                     Line::from("Press 'p' to enter the correct password."),
                 ],
             }
@@ -157,4 +161,8 @@ fn render_wallet_info(app: &App) -> Paragraph<'_> {
         )
         .style(Style::default().fg(Color::White))
         .alignment(Alignment::Left)
+}
+
+fn get_wallet_keypair(wallet: &Wallet, password: &str) -> Result<Keypair, WalletError> {
+    wallet.get_coldkey(password)
 }

@@ -1,0 +1,30 @@
+[package]
+name = "bittensor-wallet"
+version = "0.1.0"
+edition = "2021"
+
+
+[lib]
+name = "bittensor_wallet"
+path = "src/lib.rs"
+
+[[bin]]
+name = "bittensor-wallet"
+path = "src/main.rs"
+
+[dependencies]
+clap = { workspace = true }
+aes-gcm = "0.10.3"
+argon2 = "0.5.3"
+bip39.workspace = true
+rand.workspace = true
+schnorrkel = "0.11.4"
+serde.workspace = true
+sp-core = "34.0.0"
+sp-runtime = "39.0.0"
+subxt.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3.2"

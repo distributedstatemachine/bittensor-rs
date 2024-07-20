@@ -1,8 +1,8 @@
-use bittensor_rs::errors::AppError;
-use bittensor_rs::subnets::SubnetInfo;
-use bittensor_rs::wallet::detect_wallets;
-use bittensor_rs::wallet::Wallet;
+use bittensor_rs::subnets::types::SubnetInfo;
 use bittensor_rs::Subtensor;
+use bittensor_wallet::detect_wallets;
+use bittensor_wallet::Wallet;
+use errors::AppError;
 use futures::executor::block_on;
 use futures::TryFutureExt;
 
@@ -127,7 +127,6 @@ impl App {
         let config_file = Self::get_config_path()?;
         let coldkey = Self::read_coldkey_from_config(&config_file)?;
         // let coldkey = Self::read_coldkey_from_config(&config_file)?;
-
 
         let mut app = App {
             state: AppState::Home,

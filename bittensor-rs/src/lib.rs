@@ -1,7 +1,6 @@
 #[macro_use]
 extern crate lazy_static;
 use log::info;
-use std::ops::Sub;
 use std::str::FromStr;
 use std::sync::Arc;
 use subxt::utils::AccountId32;
@@ -22,9 +21,10 @@ use subxt::runtime_api::RuntimeApiClient;
 use subxt::tx::PairSigner;
 use subxt::{OnlineClient, SubstrateConfig};
 
+// pub mod delegates;
 pub mod neurons;
+pub mod root;
 pub mod subnets;
-pub mod wallet;
 
 pub mod errors;
 use errors::SubtensorError;

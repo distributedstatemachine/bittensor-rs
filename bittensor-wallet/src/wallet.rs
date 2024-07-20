@@ -1,3 +1,6 @@
+use crate::errors::WalletError;
+use crate::keypair::Keypair;
+
 use aes_gcm::{
     aead::{Aead, KeyInit},
     Aes256Gcm, Nonce,
@@ -9,114 +12,14 @@ use bip39::{Language, Mnemonic};
 use rand::RngCore;
 use schnorrkel::{
     derive::{ChainCode, Derivation},
-    ExpansionMode, MiniSecretKey, Signature as SchnorrkelSignature,
+    ExpansionMode, MiniSecretKey,
 };
 use serde::{Deserialize, Serialize};
 use sp_core::{sr25519, Pair};
-use sp_runtime::traits::IdentifyAccount;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-pub mod errors;
-use errors::WalletError;
-
-#[derive(Clone, Debug)]
-pub struct Keypair {
-    pub public: sr25519::Public,
-    encrypted_private: Vec<u8>,
-}
-
-impl Keypair {
-    pub fn new(public: sr25519::Public, encrypted_private: Vec<u8>) -> Self {
-        Self {
-            public,
-            encrypted_private,
-        }
-    }
-
-    /// Decrypts the private key using the provided password.
-    ///
-    /// # Arguments
-    ///
-    /// * `password` - The password used to decrypt the private key.
-    ///
-    /// # Returns
-    ///
-    /// * `Result<sr25519::Pair, WalletError>` - The decrypted SR25519 key pair or an error.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// let keypair = Keypair::new(public_key, encrypted_private_key);
-    /// let pair = keypair.decrypt_private_key("secure_password").expect("Decryption failed");
-    /// ```
-    pub fn decrypt_private_key(&self, password: &str) -> Result<sr25519::Pair, WalletError> {
-        // Ensure we have encrypted data to decrypt
-        if self.encrypted_private.is_empty() {
-            return Err(WalletError::NoEncryptedPrivateKey);
-        }
-
-        // Extract salt, nonce, and ciphertext from encrypted_private
-        let salt = self
-            .encrypted_private
-            .get(..16)
-            .ok_or(WalletError::DecryptionError)?;
-        let nonce = self
-            .encrypted_private
-            .get(16..28)
-            .ok_or(WalletError::DecryptionError)?;
-        let ciphertext = self
-            .encrypted_private
-            .get(28..)
-            .ok_or(WalletError::DecryptionError)?;
-
-        // Derive the key from the password using Argon2
-        let argon2 = Argon2::default();
-        let mut key = [0u8; 32];
-        argon2
-            .hash_password_into(password.as_bytes(), salt, &mut key)
-            .map_err(|_| WalletError::DecryptionError)?;
-
-        // Create an AES-256-GCM cipher
-        let cipher = Aes256Gcm::new_from_slice(&key).map_err(|_| WalletError::DecryptionError)?;
-
-        // Decrypt the ciphertext
-        let plaintext = cipher
-            .decrypt(Nonce::from_slice(nonce), ciphertext)
-            .map_err(|_| WalletError::DecryptionError)?;
-
-        // Convert plaintext to sr25519::Pair
-        sr25519::Pair::from_seed_slice(&plaintext).map_err(|_| WalletError::InvalidPrivateKey)
-    }
-
-    pub fn sign(&self, message: &[u8], password: &str) -> Result<SchnorrkelSignature, WalletError> {
-        let pair = self.decrypt_private_key(password)?;
-        let signature: sr25519::Signature = pair.sign(message);
-        SchnorrkelSignature::from_bytes(signature.as_ref())
-            .map_err(|_| WalletError::SignatureConversionError)
-    }
-}
-
-/// Implements the `IdentifyAccount` trait for `Keypair`.
-///
-/// This implementation allows a `Keypair` to be converted into an `AccountId32`,
-/// which is typically used to identify accounts in the Substrate ecosystem.
-///
-/// # Examples
-///
-/// ```
-/// use sp_runtime::traits::IdentifyAccount;
-/// let keypair = Keypair::new(); // Assuming a new() method exists
-/// let account_id: sp_runtime::AccountId32 = keypair.into_account();
-/// ```
-impl IdentifyAccount for Keypair {
-    type AccountId = sp_runtime::AccountId32;
-
-    fn into_account(self) -> Self::AccountId {
-        // Convert the public key to an AccountId32
-        self.public.into()
-    }
-}
+// use errors::WalletError;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Wallet {
@@ -178,7 +81,7 @@ impl Wallet {
 
         // Create a new mnemonic from the generated entropy
         let mnemonic = Mnemonic::from_entropy_in(Language::English, &entropy)
-            .map_err(|e| WalletError::MnemonicGenerationError(e))?;
+            .map_err(WalletError::MnemonicGenerationError)?;
 
         // Encrypt the mnemonic using the provided password
         self.encrypted_mnemonic = self.encrypt_mnemonic(&mnemonic, password)?;
@@ -253,16 +156,39 @@ impl Wallet {
         }
     }
 
-    pub fn get_coldkey(&self, password: &str) -> Result<Keypair, WalletError> {
-        let mnemonic = self.decrypt_mnemonic(password)?;
-        let seed = mnemonic.to_seed("");
-        let pair = sr25519::Pair::from_seed_slice(&seed[..32])
-            .map_err(|_| WalletError::KeyDerivationError)?;
-        let encrypted_private = self.encrypt_private_key(&pair, password)?;
-        Ok(Keypair {
-            public: pair.public(),
-            encrypted_private,
-        })
+    /// Retrieves the coldkey as a public key.
+    ///
+    /// This function decrypts the wallet's mnemonic, derives the seed, generates an SR25519 keypair,
+    /// and returns the public key.
+    ///
+    /// # Arguments
+    ///
+    /// * `password` - A string slice that holds the password to decrypt the mnemonic.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<sr25519::Public, WalletError>` - A Result containing either the public key or a WalletError.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let wallet = Wallet::new("my_wallet", PathBuf::from("/path/to/wallet"));
+    /// let coldkey_public = wallet.get_coldkey("my_password").expect("Failed to get coldkey public key");
+    /// ```
+    pub fn get_coldkey(&self, password: &str) -> Result<sr25519::Public, WalletError> {
+        // Decrypt the mnemonic using the provided password
+        let mnemonic: Mnemonic = self.decrypt_mnemonic(password)?;
+
+        // Generate the seed from the mnemonic
+        let seed: [u8; 32] = mnemonic.to_seed("")[..32]
+            .try_into()
+            .map_err(|_| WalletError::ConversionError)?;
+
+        // Generate an SR25519 keypair from the seed
+        let pair: sr25519::Pair = sr25519::Pair::from_seed(&seed);
+
+        // Return only the public key
+        Ok(pair.public())
     }
 
     /// Gets the active hotkey as a Keypair.
@@ -293,24 +219,43 @@ impl Wallet {
     /// # Returns
     ///
     /// * `Result<Keypair, WalletError>` - The hotkey Keypair or an error.
+    /// Gets a hotkey as a Keypair.
+    ///
+    /// # Arguments
+    ///
+    /// * `hotkey_name` - The name of the hotkey to retrieve.
+    /// * `password` - The password to decrypt the mnemonic.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<Keypair, WalletError>` - The hotkey Keypair or an error.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let wallet = Wallet::new("my_wallet", PathBuf::from("/path/to/wallet"));
+    /// let hotkey = wallet.get_hotkey("my_hotkey", "password").expect("Failed to get hotkey");
+    /// ```
     pub fn get_hotkey(&self, hotkey_name: &str, password: &str) -> Result<Keypair, WalletError> {
-        let mnemonic = self.decrypt_mnemonic(password)?;
-        let seed = mnemonic.to_seed("");
+        // Decrypt the mnemonic using the provided password
+        let mnemonic: Mnemonic = self.decrypt_mnemonic(password)?;
 
-        // Derive the hotkey path
-        let hotkey_path = self
+        // Generate the seed from the mnemonic
+        let seed: [u8; 32] = mnemonic.to_seed("")[..32]
+            .try_into()
+            .map_err(|_| WalletError::ConversionError)?;
+
+        // Retrieve the hotkey path
+        let hotkey_path: &Vec<u8> = self
             .hotkey_paths
             .get(hotkey_name)
             .ok_or(WalletError::HotkeyNotFound)?;
 
         // Derive the hotkey pair
-        let pair = self.derive_sr25519_key(&seed, hotkey_path)?;
-        let encrypted_private = self.encrypt_private_key(&pair, password)?;
+        let pair: sr25519::Pair = self.derive_sr25519_key(&seed, hotkey_path)?;
 
-        Ok(Keypair {
-            public: pair.public(),
-            encrypted_private,
-        })
+        // Return only the public key in the Keypair
+        Ok(Keypair::new(pair.public(), Vec::new()))
     }
 
     pub async fn fetch_balance(&mut self) -> Result<(), WalletError> {
@@ -339,12 +284,12 @@ impl Wallet {
     pub fn regenerate_wallet(&mut self, mnemonic: &str, password: &str) -> Result<(), WalletError> {
         // Convert the mnemonic phrase to entropy
         let entropy = Mnemonic::parse_in_normalized(Language::English, mnemonic)
-            .map_err(|e| WalletError::MnemonicGenerationError(e))?
+            .map_err(WalletError::MnemonicGenerationError)?
             .to_entropy();
 
         // Create a new mnemonic from the entropy
         let mnemonic = Mnemonic::from_entropy_in(Language::English, &entropy)
-            .map_err(|e| WalletError::MnemonicGenerationError(e))?;
+            .map_err(WalletError::MnemonicGenerationError)?;
 
         // Encrypt the mnemonic using the provided password
         self.encrypted_mnemonic = self.encrypt_mnemonic(&mnemonic, password)?;
@@ -425,7 +370,6 @@ impl Wallet {
         Ok(())
     }
 
-    
     fn encrypt_mnemonic(
         &self,
         mnemonic: &Mnemonic,
@@ -525,7 +469,7 @@ impl Wallet {
     /// let encrypted_private = vec![1, 2, 3, 4, 5]; // Example encrypted private key
     /// wallet.update_hotkey_encryption("hotkey1", &encrypted_private).expect("Failed to update hotkey encryption");
     /// ```
-    fn update_hotkey_encryption(
+    pub fn update_hotkey_encryption(
         &mut self,
         name: &str,
         encrypted_private: &[u8],
@@ -630,7 +574,7 @@ impl Wallet {
         // Iteratively derive the key pair using the path
         for junction in path {
             let (derived_key, next_chain_code) =
-                secret_key.derived_key_simple(chain_code, &[*junction]);
+                secret_key.derived_key_simple(chain_code, [*junction]);
             secret_key = derived_key;
             pair = sr25519::Pair::from_seed_slice(&secret_key.to_bytes()[..32])
                 .map_err(|_| WalletError::KeyDerivationError)?;
@@ -701,6 +645,7 @@ impl Wallet {
 mod tests {
     use super::*;
     use bip39::Mnemonic;
+    use sp_runtime::traits::IdentifyAccount;
     use std::str::FromStr;
     use tempfile::tempdir;
 

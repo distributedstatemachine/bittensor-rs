@@ -25,7 +25,7 @@
 /// - Implement actual functionality for root network operations
 /// - Add error handling for root network operations
 use crate::app::{App, AppState};
-use bittensor_rs::errors::AppError;
+use crate::errors::AppError;
 use crossterm::event::KeyCode;
 
 pub async fn handle_input(app: &mut App, input: KeyCode) -> Result<(), AppError> {

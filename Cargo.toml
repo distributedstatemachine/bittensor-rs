@@ -1,9 +1,9 @@
 [workspace]
-members = ["bittensor-rs", "lightning-tensor"]
+members = ["bittensor-rs", "bittensor-wallet", "lightning-tensor"]
 resolver = "2"
 
 [workspace.dependencies]
-clap = "4.5.9"
+clap = { version = "4.5.9", features = ["derive"] }
 codec = { package = "parity-scale-codec", version = "3.6.1", default-features = false, features = [
     "derive",
 ] }

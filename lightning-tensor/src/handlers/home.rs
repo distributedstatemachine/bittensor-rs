@@ -12,7 +12,7 @@
 /// - Add more sophisticated input handling
 /// - Implement help functionality
 use crate::app::{App, AppState};
-use bittensor_rs::errors::AppError;
+use crate::errors::AppError;
 use crossterm::event::KeyCode;
 
 pub async fn handle_input(app: &mut App, input: KeyCode) -> Result<(), AppError> {
