@@ -56,6 +56,8 @@ fn get_type_id(type_id: TypeId) -> u32 {
 ///
 /// This trait provides methods for submitting extrinsics, fetching storage,
 /// calling runtime APIs, and performing RPC calls on a blockchain network.
+/// Implementations of this trait should handle the specifics of interacting
+/// with  Subtensor.
 pub trait ChainInteraction {
     /// Submits an extrinsic to the blockchain.
     ///
@@ -140,6 +142,7 @@ pub trait ChainInteraction {
 ///
 /// This struct provides methods to interact with the Subtensor blockchain,
 /// including submitting transactions, querying storage, and making RPC calls.
+/// It encapsulates the necessary components for secure and efficient blockchain interactions.
 pub struct Subtensor {
     client: Arc<OnlineClient<SubstrateConfig>>,
     signer: Arc<PairSigner<SubstrateConfig, sr25519::Pair>>,
@@ -155,13 +158,19 @@ impl Subtensor {
     ///
     /// # Arguments
     ///
-    /// * `chain_endpoint` - The WebSocket URL of the Subtensor node.
-    /// * `coldkey` - The coldkey (private key) used for signing transactions.
+    /// * `chain_endpoint` - The WebSocket URL of the Subtensor node (e.g., "ws://localhost:9944").
+    /// * `coldkey` - The coldkey (private key) used for signing transactions. This should be a valid SS58-encoded private key.
     ///
     /// # Returns
     ///
     /// A Result containing a new Subtensor instance if successful,
-    /// or an SubtensorError if the connection or setup fails.
+    /// or a SubtensorError if the connection or setup fails.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// - The connection to the specified chain_endpoint fails.
+    /// - The provided coldkey is invalid or cannot be used to create a signer.
     pub async fn new(chain_endpoint: &str, coldkey: &str) -> Result<Self, SubtensorError> {
         let client = OnlineClient::<SubstrateConfig>::from_url(chain_endpoint)
             .await
@@ -192,13 +201,21 @@ impl Subtensor {
     ///
     /// # Returns
     ///
-    /// * `Result<f64, SubtensorError>` - The balance as a f64 or an error.
+    /// * `Result<f64, SubtensorError>` - The balance as a f64 representing TAO tokens,
+    ///   or an error if the balance couldn't be fetched or decoded.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// - The provided SS58 address is invalid.
+    /// - The account information cannot be fetched from the blockchain.
+    /// - The account data cannot be decoded.
     ///
     /// # Example
     ///
     /// ```
     /// let balance = subtensor.fetch_balance("5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY").await?;
-    /// println!("Balance: {}", balance);
+    /// println!("Balance: {} TAO", balance);
     /// ```
     pub async fn fetch_balance(&self, ss58_address: &str) -> Result<f64, SubtensorError> {
         // Convert SS58 address to AccountId32
@@ -379,7 +396,7 @@ impl ChainInteraction for Subtensor {
 #[derive(Decode)]
 struct AccountData<Balance> {
     free: Balance,
-    reserved: Balance,
-    misc_frozen: Balance,
-    fee_frozen: Balance,
+    _reserved: Balance,
+    _misc_frozen: Balance,
+    _fee_frozen: Balance,
 }

@@ -1,4 +1,3 @@
-
 use subxt::error::EncodeError;
 
 /// Documentation for the AppError enum

@@ -2,6 +2,13 @@
 name = "bittensor-rs"
 version = "0.1.0"
 edition = "2021"
+description = "A Rust library for interacting with the Bittensor blockchain"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/distrbuted_state_machine/bittensor-rs"
+documentation = "https://docs.rs/bittensor-rs"
+readme = "README.md"
+keywords = ["bittensor", "blockchain", "cryptocurrency"]
+categories = ["cryptography::cryptocurrencies"]
 
 [dependencies]
 clap = { workspace = true }
