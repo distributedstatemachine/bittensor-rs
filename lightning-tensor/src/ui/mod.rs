@@ -151,7 +151,3 @@ fn get_animated_ascii_art(frame: usize) -> Vec<String> {
         })
         .collect()
 }
-
-pub use root::draw as draw_root;
-pub use subnets::draw as draw_subnets;
-pub use wallet::draw as draw_wallet;

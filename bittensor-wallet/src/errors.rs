@@ -12,18 +12,10 @@ use subxt::error::EncodeError;
 /// * `Network` - Errors related to network operations
 /// * `Blockchain` - Errors related to blockchain interactions
 ///
-/// # Example
-/// ```
-/// use crate::errors::AppError;
-///
-
-///
-/// - Add more specific error types as needed
-/// - Implement custom error handling and recovery strategies
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum SubtensorError {
+pub enum WalletError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
     #[error("Invalid input: {0}")]
@@ -74,13 +66,46 @@ pub enum SubtensorError {
     RpcError(String),
     #[error("Not found: {0}")]
     NotFound(String),
+    #[error("Key derivation error")]
+    KeyDerivationError,
+    #[error("Mnemonic generation error: {0}")]
+    MnemonicGenerationError(bip39::Error),
+    #[error("No active hotkey")]
+    NoActiveHotkey,
+    #[error("Hotkey not found")]
+    HotkeyNotFound,
+    #[error("Invalid mnemonic phrase")]
+    InvalidMnemonicPhrase,
+    #[error("Invalid seed phrase")]
+    InvalidSeedPhrase,
+    #[error("Invalid derivation path")]
+    InvalidDerivationPath,
+    #[error("Invalid conversion")]
+    ConversionError,
+    #[error("No encrypted mnemonic")]
+    NoEncryptedMnemonic,
+    #[error("No hotkey data")]
+    NoHotkeyData,
+    #[error("Invalid mnemonic")]
+    InvalidMnemonic,
+    #[error("Invalid seed length")]
+    InvalidSeedLength,
+    #[error("Invalid private key")]
+    InvalidPrivateKey,
+    #[error("Invalid signature")]
+    InvalidSignature,
+    #[error("No encrypted private key")]
+    NoEncryptedPrivateKey,
+    #[error("Signature conversion error")]
+    SignatureConversionError,
+    #[error("Key generation error")]
+    KeyGenerationError,
+    #[error("Public key error")]
+    PublicKeyError,
 }
 
-// TODO: Implement custom From traits for specific error conversions
-// TODO: Add unit tests for error handling scenarios
-
-impl From<EncodeError> for SubtensorError {
+impl From<EncodeError> for WalletError {
     fn from(error: EncodeError) -> Self {
-        SubtensorError::EncodingError(error.to_string())
+        WalletError::EncodingError(error.to_string())
     }
 }

@@ -1,12 +1,10 @@
-use bittensor_rs::errors::AppError;
-use bittensor_rs::subnets::SubnetInfo;
-use bittensor_rs::wallet::detect_wallets;
-use bittensor_rs::wallet::Wallet;
+use crate::errors::AppError;
+use bittensor_rs::subnets::types::SubnetInfo;
 use bittensor_rs::Subtensor;
+use bittensor_wallet::Wallet;
 use futures::executor::block_on;
-use futures::TryFutureExt;
+use std::error::Error;
 
-use crate::handlers::wallet::SendableResult;
 use crate::ui::AnimationState;
 use crossterm::event::{self, Event, KeyCode};
 use log::debug;
@@ -14,7 +12,6 @@ use ratatui::backend::Backend;
 use ratatui::widgets::ListState;
 use ratatui::{Frame, Terminal};
 use sp_core::crypto::AccountId32;
-use std::ops::Sub;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
@@ -31,7 +28,7 @@ pub enum WalletOperation {
     /// Represents the result of loading a wallet address
     AddressLoaded(Result<String, AppError>),
     /// Represents the result of creating a new wallet
-    WalletCreated(SendableResult),
+    WalletCreated(Result<Wallet, Box<dyn Error + Send + Sync>>),
     /// Represents the result of changing a wallet password
     PasswordChanged(Result<(), AppError>),
 }
@@ -59,7 +56,6 @@ pub struct App {
     pub input_mode: bool,
     pub input_prompt: String,
     pub input_callback: Arc<dyn Fn(&mut App, String) + Send + Sync>,
-
     pub wallets: Vec<Wallet>,
     pub wallet_list_state: ListState,
     pub wallet_password: String,
@@ -128,7 +124,6 @@ impl App {
         let coldkey = Self::read_coldkey_from_config(&config_file)?;
         // let coldkey = Self::read_coldkey_from_config(&config_file)?;
 
-
         let mut app = App {
             state: AppState::Home,
             should_quit: false,
@@ -161,18 +156,6 @@ impl App {
         Ok(app)
     }
 
-    // /// Fetches the list of subnets from the blockchain
-    // pub async fn fetch_subnets(&mut self) -> Result<(), AppError> {
-    //     self.subnets = self.subtensor.get_subnets_info().await?;
-    //     Ok(())
-    // }
-
-    // /// Fetches the lock cost for a specific subnet
-    // pub async fn fetch_subnet_lock_cost(&mut self, netuid: u16) -> Result<u64, AppError> {
-    //     let subnet_info = self.bittensor_api.get_subnet_info(netuid).await?;
-    //     Ok(subnet_info.burn.into())
-    // }
-
     /// Updates the lock cost for a specific subnet in the local list
     pub fn update_subnet_lock_cost(&mut self, netuid: u16, lock_cost: u64) {
         if let Some(subnet) = self.subnets.iter_mut().find(|s| s.netuid == netuid.into()) {
@@ -192,13 +175,54 @@ impl App {
     }
 
     fn detect_and_load_wallets(&mut self) -> Result<(), AppError> {
-        self.wallets = detect_wallets(&self.wallet_dir);
+        self.wallets = self.detect_wallets(&self.wallet_dir);
         if !self.wallets.is_empty() {
             self.wallet_list_state.select(Some(0));
         }
         Ok(())
     }
 
+    /// Detects and loads wallets from the specified directory.
+    ///
+    /// # Arguments
+    ///
+    /// * `wallet_dir` - A reference to a PathBuf representing the directory to search for wallets.
+    ///
+    /// # Returns
+    ///
+    /// A Vec<Wallet> containing all successfully loaded wallets.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let wallet_dir = PathBuf::from("/path/to/wallets");
+    /// let wallets = app.detect_wallets(&wallet_dir);
+    /// ```
+    fn detect_wallets(&self, wallet_dir: &PathBuf) -> Vec<Wallet> {
+        let mut wallets: Vec<Wallet> = Vec::new();
+
+        // Attempt to read the contents of the wallet directory
+        if let Ok(entries) = std::fs::read_dir(wallet_dir) {
+            for entry in entries.flatten() {
+                if let Ok(file_type) = entry.file_type() {
+                    // Check if the entry is a directory
+                    if file_type.is_dir() {
+                        let wallet_name = entry.file_name().to_string_lossy().into_owned();
+                        let wallet_path = entry.path();
+
+                        // Attempt to create a new Wallet instance
+                        let wallet = Wallet::new(&wallet_name, wallet_path);
+                        {
+                            wallets.push(wallet);
+                            log::info!("Loaded wallet: {}", wallet_name);
+                        }
+                    }
+                }
+            }
+        }
+
+        wallets
+    }
     pub async fn refresh_wallet_balances(&mut self) -> Result<(), AppError> {
         for wallet in &mut self.wallets {
             wallet.fetch_balance().await?;

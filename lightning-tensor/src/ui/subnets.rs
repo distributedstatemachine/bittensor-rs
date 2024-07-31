@@ -1,11 +1,11 @@
-///! Documentation for the Subnets draw function
-///
-/// This function renders the Subnets view of the TUI.
-///
-/// # TODO
-///
-/// - Implement actual subnet data display
-/// - Add interactive elements for subnet operations
+//! Documentation for the Subnets module
+//!
+//! This module contains functions for rendering the Subnets view of the TUI.
+//!
+//! # TODO
+//!
+//! - Implement actual subnet data display
+//! - Add interactive elements for subnet operations
 use ratatui::{
     layout::{Constraint, Direction, Layout},
     style::{Color, Style},

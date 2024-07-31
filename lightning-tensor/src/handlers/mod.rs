@@ -1,20 +1,8 @@
-/// Documentation for the Events struct
-///
-/// This struct manages input events and ticks for the TUI.
-///
-/// # Fields
-///
-/// * `rx` - A receiver for events (input or tick)
-///
-/// # Methods
-///
-/// * `new()` - Creates a new Events instance and spawns an event loop
-/// * `next()` - Waits for and returns the next event
-///
-/// # TODO
-///
-/// - Add support for mouse events if needed
-/// - Implement error handling for event processing
+//! This module manages input events and ticks for the TUI.
+//!
+//! It provides an `Events` struct for handling user input and periodic ticks,
+//! as well as submodules for specific UI state handlers.
+
 use crossterm::event::{self, Event as CEvent, KeyCode};
 
 use std::time::Duration;

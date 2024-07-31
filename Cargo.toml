@@ -1,9 +1,9 @@
 [workspace]
-members = ["bittensor-rs", "lightning-tensor"]
+members = ["bittensor-rs", "bittensor-wallet", "lightning-tensor"]
 resolver = "2"
 
 [workspace.dependencies]
-clap = "4.5.9"
+clap = { version = "4.5.9", features = ["derive"] }
 codec = { package = "parity-scale-codec", version = "3.6.1", default-features = false, features = [
     "derive",
 ] }
@@ -31,3 +31,5 @@ simplelog = "0.12.2"
 parking_lot = "0.12.3"
 futures = "0.3.30"
 subxt = { version = "0.37.0", features = ["substrate-compat"] }
+pyo3 = { version = "0.20.0", features = ["extension-module"] }
+pyo3-asyncio = { version = "0.20.0", features = ["tokio-runtime"] }

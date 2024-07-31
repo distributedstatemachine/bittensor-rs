@@ -1,23 +1,13 @@
-/// This function sets up the terminal for the TUI, runs the main application loop,
-/// and restores the terminal state when the application exits.
-///
-/// # Notes
-///
-/// - Uses crossterm for terminal manipulation
-/// - Creates a ratatui terminal with a CrosstermBackend
-/// - Handles errors and restores terminal state on exit
-///
-/// # TODO
-///
-/// - Add command line arguments for initial state or configuration
-/// - Implement logging for better error tracking
-/// Every validator uses wallet , metagraph maybe axon / dendrites
+//! This module contains the main entry point for the Lightning Tensor application.
+//!
+//! It sets up the terminal for the TUI, runs the main application loop,
+//! and restores the terminal state when the application exits.
 mod app;
+pub mod errors;
 mod handlers;
 mod ui;
 
-use bittensor_rs::errors::AppError;
-
+use errors::AppError;
 
 use app::App;
 use crossterm::{

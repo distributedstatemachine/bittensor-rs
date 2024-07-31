@@ -6,10 +6,10 @@ use ratatui::{
     Frame,
 };
 
-// use crate::blockchain::wallet::Wallet;
-// use crate::errors::AppError;
 use crate::App;
-// use log::debug;
+// use bittensor_wallet::keypair::Keypair;
+use bittensor_wallet::Wallet;
+use bittensor_wallet::WalletError;
 
 /// Renders the wallet interface
 ///
@@ -108,15 +108,15 @@ fn render_wallet_list(app: &App) -> List<'static> {
 fn render_wallet_info(app: &App) -> Paragraph<'_> {
     let wallet_info = if let Some(selected_index) = app.selected_wallet {
         if let Some(selected_wallet) = app.wallets.get(selected_index) {
-            match selected_wallet.get_address(&app.wallet_password) {
-                Ok(address) => vec![
+            match get_wallet_public_key(selected_wallet, &app.wallet_password) {
+                Ok(public_key) => vec![
                     Line::from(vec![
                         Span::raw("Name: "),
                         Span::styled(&selected_wallet.name, Style::default().fg(Color::Yellow)),
                     ]),
                     Line::from(vec![
                         Span::raw("Address: "),
-                        Span::styled(address, Style::default().fg(Color::Cyan)),
+                        Span::styled(public_key.to_string(), Style::default().fg(Color::Cyan)),
                     ]),
                     Line::from(vec![
                         Span::raw("Balance: "),
@@ -134,7 +134,7 @@ fn render_wallet_info(app: &App) -> Paragraph<'_> {
                     Line::from("Press 'p' to change the wallet password"),
                 ],
                 Err(_) => vec![
-                    Line::from("Failed to get wallet address."),
+                    Line::from("Failed to decrypt wallet."),
                     Line::from("Press 'p' to enter the correct password."),
                 ],
             }
@@ -158,3 +158,171 @@ fn render_wallet_info(app: &App) -> Paragraph<'_> {
         .style(Style::default().fg(Color::White))
         .alignment(Alignment::Left)
 }
+
+fn get_wallet_public_key(
+    wallet: &Wallet,
+    password: &str,
+) -> Result<sp_core::sr25519::Public, WalletError> {
+    wallet.get_coldkey(password)
+}
+
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+//     use crate::app::AppState;
+//     use crate::ui::wallet::WalletError;
+//     use bittensor_rs::Subtensor;
+//     use ratatui::backend::TestBackend;
+//     use ratatui::widgets::ListState;
+//     use ratatui::Terminal;
+//     use sp_core::sr25519;
+//     use std::sync::Arc;
+//     use tokio::sync::Mutex;
+
+//     fn create_test_app() -> App {
+//         App {
+//             wallets: vec![
+//                 Wallet::new("Test Wallet 1", std::path::PathBuf::from("/test/path1")),
+//                 Wallet::new("Test Wallet 2", std::path::PathBuf::from("/test/path2")),
+//             ],
+//             selected_wallet: Some(0),
+//             wallet_list_state: ratatui::widgets::ListState::default(),
+//             input_mode: false,
+//             input_buffer: String::new(),
+//             input_prompt: String::new(),
+//             is_password_input: false,
+//             wallet_password: "test_password".to_string(),
+//             messages: Arc::new(Mutex::new(Vec::new())),
+//             state: AppState::Home,
+//             should_quit: false,
+//             subtensor: Some(Subtensor::default()),
+//             subnets: Vec::new(),
+//             selected_subnet: None,
+//             input_callback: Some(Arc::new(|_app: &mut App, _input: String| {})),
+//             animation_state: AnimationState::default(),
+//             wallet_op_sender: Some(tokio::sync::mpsc::channel::<WalletOperation>(100).0),
+//             wallet_op_receiver: Some(tokio::sync::mpsc::channel::<WalletOperation>(100).1),
+//             wallet_dir: std::path::PathBuf::from("/test/wallet_dir"),
+//         }
+//     }
+
+//     #[tokio::test]
+//     async fn test_draw() {
+//         let mut app = create_test_app();
+//         let backend = TestBackend::new(100, 100);
+//         let mut terminal = Terminal::new(backend).unwrap();
+
+//         terminal
+//             .draw(|f| {
+//                 let size = f.size();
+//                 draw(f, &mut app, size);
+//             })
+//             .unwrap();
+
+//         let buffer = terminal.backend().buffer().clone();
+//         assert!(buffer
+//             .content
+//             .iter()
+//             .any(|cell| cell.symbol() == "Wallet Management"));
+//         assert!(buffer
+//             .content
+//             .iter()
+//             .any(|cell| cell.symbol() == "Test Wallet 1"));
+//         assert!(buffer
+//             .content
+//             .iter()
+//             .any(|cell| cell.symbol() == "Test Wallet 2"));
+//     }
+
+//     #[test]
+//     fn test_render_wallet_list() {
+//         let app = create_test_app();
+//         let wallet_list = render_wallet_list(&app);
+
+//         // Create a new ListState
+//         let mut list_state = ListState::default();
+
+//         // Get the items, passing the ListState
+//         let items = wallet_list.items(&mut list_state);
+
+//         assert_eq!(items.len(), 2);
+//         assert!(items[0].content().contains("Test Wallet 1"));
+//         assert!(items[1].content().contains("Test Wallet 2"));
+//     }
+//     #[test]
+//     fn test_render_wallet_info() {
+//         let mut app = create_test_app();
+
+//         let wallet_info = render_wallet_info(&app);
+//         assert!(wallet_info.lines().any(|line| line
+//             .spans
+//             .iter()
+//             .any(|span| span.content.contains("Test Wallet 1"))));
+
+//         app.selected_wallet = None;
+//         let wallet_info = render_wallet_info(&app);
+//         assert!(wallet_info.lines().any(|line| line
+//             .spans
+//             .iter()
+//             .any(|span| span.content.contains("No wallet selected"))));
+//     }
+
+//     #[test]
+//     fn test_get_wallet_public_key() {
+//         let mut wallet = Wallet::new("Test Wallet", std::path::PathBuf::from("/test/path"));
+//         wallet.create_new_wallet(12, "test_password").unwrap();
+
+//         let result = get_wallet_public_key(&wallet, "test_password");
+//         assert!(result.is_ok());
+//         assert_eq!(result.unwrap().as_ref().len(), 32);
+//     }
+
+//     #[tokio::test]
+//     async fn test_draw_input_mode() {
+//         let mut app = create_test_app();
+//         app.input_mode = true;
+//         app.input_buffer = "test input".to_string();
+//         app.input_prompt = "Enter: ".to_string();
+
+//         let backend = TestBackend::new(100, 100);
+//         let mut terminal = Terminal::new(backend).unwrap();
+
+//         terminal
+//             .draw(|f| {
+//                 let size = f.size();
+//                 draw(f, &mut app, size);
+//             })
+//             .unwrap();
+
+//         let buffer = terminal.backend().buffer().clone();
+//         assert!(buffer
+//             .content
+//             .iter()
+//             .any(|cell| cell.symbol() == "Enter: test input"));
+//     }
+
+//     #[tokio::test]
+//     async fn test_draw_password_input() {
+//         let mut app = create_test_app();
+//         app.input_mode = true;
+//         app.is_password_input = true;
+//         app.input_buffer = "password".to_string();
+//         app.input_prompt = "Password: ".to_string();
+
+//         let backend = TestBackend::new(100, 100);
+//         let mut terminal = Terminal::new(backend).unwrap();
+
+//         terminal
+//             .draw(|f| {
+//                 let size = f.size();
+//                 draw(f, &mut app, size);
+//             })
+//             .unwrap();
+
+//         let buffer = terminal.backend().buffer().clone();
+//         assert!(buffer
+//             .content
+//             .iter()
+//             .any(|cell| cell.symbol() == "Password: ********"));
+//     }
+// }

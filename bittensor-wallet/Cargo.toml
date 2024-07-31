@@ -1,0 +1,39 @@
+[package]
+name = "bittensor-wallet"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "bittensor_wallet"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "bittensor-wallet"
+path = "src/main.rs"
+
+[dependencies]
+clap = { workspace = true }
+aes-gcm = "0.10.3"
+argon2 = "0.5.3"
+bip39.workspace = true
+rand.workspace = true
+schnorrkel = "0.11.4"
+serde.workspace = true
+sp-core = "34.0.0"
+sp-runtime = "39.0.0"
+subxt.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true }
+pyo3 = { workspace = true }
+pyo3-asyncio = { workspace = true }
+log.workspace = true
+env_logger.workspace = true
+
+[build-dependencies]
+pyo3-build-config = "0.20.0"
+
+[dev-dependencies]
+bincode = "1.3.3"
+serde = { workspace = true, features = ["derive"] }
+tempfile = "3.2"

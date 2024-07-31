@@ -1,8 +1,9 @@
 use crate::app::{App, AppState, WalletOperation};
-use bittensor_rs::wallet::Wallet;
-use bittensor_rs::errors::AppError;
+use crate::errors::AppError;
+use bittensor_wallet::Wallet;
 use crossterm::event::KeyCode;
 use log::{debug, error};
+use sp_core::sr25519::Signature as Sr25519Signature;
 use std::error::Error;
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -119,21 +120,26 @@ async fn create_wallet(app: &mut App) -> Result<(), AppError> {
             app.is_password_input = false;
             app.input_buffer.clear();
 
+            let wallet_dir = app.wallet_dir.clone();
             tokio::spawn(async move {
                 debug!("Spawning wallet creation task");
 
                 // Attempt to create the wallet
-                let creation_result =
-                    Wallet::create(&name_clone, &password_clone, log_tx.clone()).await;
+                let mut wallet = Wallet::new(&name_clone, wallet_dir);
+                let creation_result = wallet.create_new_wallet(12, &password_clone);
+
+                debug!("Wallet creation result: {:?}", creation_result);
 
                 debug!("Wallet creation result: {:?}", creation_result);
                 debug!("Attempted to create wallet with name: {}", name_clone);
 
                 // Send the result through the wallet operation channel
                 if let Err(send_error) = wallet_op_sender
-                    .send(WalletOperation::WalletCreated(SendableResult(
-                        creation_result,
-                    )))
+                    .send(WalletOperation::WalletCreated(
+                        creation_result
+                            .map(|_| wallet)
+                            .map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>),
+                    ))
                     .await
                 {
                     error!("Failed to send wallet creation result: {:?}", send_error);
@@ -214,34 +220,50 @@ async fn delete_wallet(app: &mut App) -> Result<(), AppError> {
 async fn sign_message(app: &mut App) -> Result<(), AppError> {
     if let Some(selected) = app.wallet_list_state.selected() {
         if selected < app.wallets.len() {
-            let wallet: Wallet = app.wallets[selected].clone();
+            let wallet = app.wallets[selected].clone();
             app.input_mode = true;
             app.input_prompt = "Enter message to sign: ".to_string();
-            app.input_callback = Arc::new(move |app: &mut App, message: String| {
-                // Clone the message here to avoid moving it in the next closure
-                let message_clone: String = message.clone();
+            app.input_callback = Arc::new(Box::new(move |app: &mut App, message: String| {
+                let wallet_clone = wallet.clone();
+                let message_clone = message.clone();
                 app.input_mode = true;
                 app.input_prompt = "Enter password: ".to_string();
-                let wallet_clone: Wallet = wallet.clone();
-                app.input_callback = Arc::new(move |app: &mut App, password: String| {
-                    let messages: Arc<Mutex<Vec<String>>> = Arc::clone(&app.messages);
-                    let wallet_clone2: Wallet = wallet_clone.clone();
-                    let message_clone2: String = message_clone.clone(); // Clone again for use in the tokio::spawn
+                app.input_callback = Arc::new(Box::new(move |app: &mut App, password: String| {
+                    let messages = Arc::clone(&app.messages);
+                    let wallet_clone2 = wallet_clone.clone();
+                    let message_clone2 = message_clone.clone();
                     tokio::spawn(async move {
                         let mut messages = messages.lock().await;
-                        match wallet_clone2.sign(message_clone2.as_bytes(), &password) {
-                            Ok(signature) => {
-                                messages.push(format!("Signature: {}", hex::encode(signature)));
+                        match wallet_clone2.get_active_hotkey(&password) {
+                            Ok(keypair) => {
+                                match keypair.sign(message_clone2.as_bytes(), &password) {
+                                    Ok(signature) => {
+                                        // Convert the signature to a byte array before encoding
+                                        let signature_bytes: [u8; 64] =
+                                            *<Sr25519Signature as AsRef<[u8; 64]>>::as_ref(
+                                                &signature,
+                                            );
+                                        messages.push(format!(
+                                            "Signature: {}",
+                                            hex::encode(signature_bytes)
+                                        ));
+                                    }
+                                    Err(e) => {
+                                        messages.push(format!("Failed to sign message: {:?}", e));
+                                    }
+                                }
                             }
-                            Err(e) => messages.push(format!("Failed to sign message: {:?}", e)),
+                            Err(e) => {
+                                messages.push(format!("Failed to get active hotkey: {:?}", e));
+                            }
                         }
                     });
                     app.input_mode = false;
-                });
-            });
+                }));
+            }));
         }
     } else {
-        let messages: Arc<Mutex<Vec<String>>> = Arc::clone(&app.messages);
+        let messages = Arc::clone(&app.messages);
         tokio::spawn(async move {
             let mut messages = messages.lock().await;
             messages.push("No wallet selected".to_string());
@@ -249,6 +271,10 @@ async fn sign_message(app: &mut App) -> Result<(), AppError> {
     }
     Ok(())
 }
+
+// TODO: Implement error handling for failed message signing
+// TODO: Consider adding a timeout for the signing process
+// TODO: Implement a way to cancel the signing process if it takes too long
 
 // TODO: Implement error handling for failed message signing
 // TODO: Consider adding a timeout for the signing process
@@ -355,11 +381,10 @@ async fn prompt_password(app: &mut App) -> Result<(), AppError> {
 
 async fn refresh_balances(app: &mut App) -> Result<(), AppError> {
     for wallet in app.wallets.iter_mut() {
-        wallet.refresh_balance().await?;
+        wallet.fetch_balance().await?;
     }
     Ok(())
 }
-
 async fn change_wallet_password(app: &mut App) -> Result<(), AppError> {
     if let Some(selected) = app.wallet_list_state.selected() {
         if selected < app.wallets.len() {
@@ -386,7 +411,9 @@ async fn change_wallet_password(app: &mut App) -> Result<(), AppError> {
                                 .change_password(&old_password_clone, &new_password)
                                 .await;
                             let _ = wallet_op_sender
-                                .send(WalletOperation::PasswordChanged(result))
+                                .send(WalletOperation::PasswordChanged(
+                                    result.map_err(AppError::from),
+                                ))
                                 .await;
                         });
 
