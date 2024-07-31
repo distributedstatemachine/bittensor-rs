@@ -3,6 +3,7 @@ use crate::errors::AppError;
 use bittensor_wallet::Wallet;
 use crossterm::event::KeyCode;
 use log::{debug, error};
+use sp_core::sr25519::Signature as Sr25519Signature;
 use std::error::Error;
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -119,11 +120,12 @@ async fn create_wallet(app: &mut App) -> Result<(), AppError> {
             app.is_password_input = false;
             app.input_buffer.clear();
 
+            let wallet_dir = app.wallet_dir.clone();
             tokio::spawn(async move {
                 debug!("Spawning wallet creation task");
 
                 // Attempt to create the wallet
-                let mut wallet = Wallet::new(&name_clone, app.wallet_dir);
+                let mut wallet = Wallet::new(&name_clone, wallet_dir);
                 let creation_result = wallet.create_new_wallet(12, &password_clone);
 
                 debug!("Wallet creation result: {:?}", creation_result);
@@ -232,12 +234,15 @@ async fn sign_message(app: &mut App) -> Result<(), AppError> {
                     let message_clone2 = message_clone.clone();
                     tokio::spawn(async move {
                         let mut messages = messages.lock().await;
-                        match wallet_clone2.get_coldkey(&password) {
+                        match wallet_clone2.get_active_hotkey(&password) {
                             Ok(keypair) => {
                                 match keypair.sign(message_clone2.as_bytes(), &password) {
                                     Ok(signature) => {
                                         // Convert the signature to a byte array before encoding
-                                        let signature_bytes: [u8; 64] = signature.to_bytes();
+                                        let signature_bytes: [u8; 64] =
+                                            *<Sr25519Signature as AsRef<[u8; 64]>>::as_ref(
+                                                &signature,
+                                            );
                                         messages.push(format!(
                                             "Signature: {}",
                                             hex::encode(signature_bytes)
@@ -249,7 +254,7 @@ async fn sign_message(app: &mut App) -> Result<(), AppError> {
                                 }
                             }
                             Err(e) => {
-                                messages.push(format!("Failed to decrypt wallet: {:?}", e));
+                                messages.push(format!("Failed to get active hotkey: {:?}", e));
                             }
                         }
                     });
@@ -266,6 +271,10 @@ async fn sign_message(app: &mut App) -> Result<(), AppError> {
     }
     Ok(())
 }
+
+// TODO: Implement error handling for failed message signing
+// TODO: Consider adding a timeout for the signing process
+// TODO: Implement a way to cancel the signing process if it takes too long
 
 // TODO: Implement error handling for failed message signing
 // TODO: Consider adding a timeout for the signing process
@@ -372,7 +381,7 @@ async fn prompt_password(app: &mut App) -> Result<(), AppError> {
 
 async fn refresh_balances(app: &mut App) -> Result<(), AppError> {
     for wallet in app.wallets.iter_mut() {
-        wallet.refresh_balance().await?;
+        wallet.fetch_balance().await?;
     }
     Ok(())
 }
@@ -402,7 +411,9 @@ async fn change_wallet_password(app: &mut App) -> Result<(), AppError> {
                                 .change_password(&old_password_clone, &new_password)
                                 .await;
                             let _ = wallet_op_sender
-                                .send(WalletOperation::PasswordChanged(result))
+                                .send(WalletOperation::PasswordChanged(
+                                    result.map_err(AppError::from),
+                                ))
                                 .await;
                         });
 

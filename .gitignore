@@ -2,3 +2,4 @@
 bittensor-rs.log
 .vscode
 config.toml
+.ipynb_checkpoints/

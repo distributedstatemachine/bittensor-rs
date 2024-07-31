@@ -1,6 +1,8 @@
 #[macro_use]
 extern crate lazy_static;
 use log::info;
+use scale_info::prelude::vec::Vec;
+use sp_std::prelude::*;
 use std::str::FromStr;
 use std::sync::Arc;
 use subxt::utils::AccountId32;

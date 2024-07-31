@@ -12,14 +12,6 @@ use subxt::error::EncodeError;
 /// * `Network` - Errors related to network operations
 /// * `Blockchain` - Errors related to blockchain interactions
 ///
-/// # Example
-/// ```
-/// use crate::errors::AppError;
-///
-
-///
-/// - Add more specific error types as needed
-/// - Implement custom error handling and recovery strategies
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -106,10 +98,11 @@ pub enum WalletError {
     NoEncryptedPrivateKey,
     #[error("Signature conversion error")]
     SignatureConversionError,
+    #[error("Key generation error")]
+    KeyGenerationError,
+    #[error("Public key error")]
+    PublicKeyError,
 }
-
-// TODO: Implement custom From traits for specific error conversions
-// TODO: Add unit tests for error handling scenarios
 
 impl From<EncodeError> for WalletError {
     fn from(error: EncodeError) -> Self {

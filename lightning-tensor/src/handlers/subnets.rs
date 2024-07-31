@@ -1,18 +1,6 @@
+//! This module contains handlers for subnet-related user inputs.
 use crate::app::{App, AppState};
 use crate::errors::AppError;
-///! Documentation for the subnets input handler
-///
-/// This function handles user input when in the Subnets state.
-///
-/// # Arguments
-///
-/// * `app` - A mutable reference to the App
-/// * `input` - The KeyCode of the user's input
-///
-/// # TODO
-///
-/// - Implement actual functionality for subnet operations
-/// - Add error handling for subnet operations
 use crossterm::event::KeyCode;
 
 pub async fn handle_input(app: &mut App, input: KeyCode) -> Result<(), AppError> {
@@ -48,8 +36,8 @@ pub async fn handle_input(app: &mut App, input: KeyCode) -> Result<(), AppError>
         KeyCode::Char('l') => {
             if let Some(selected) = app.selected_subnet {
                 let netuid = app.subnets[selected].netuid;
-                let lock_cost = app.update_subnet_lock_cost(netuid.into(), 1);
-                println!("Lock cost for subnet {:?}: {:?}", netuid, lock_cost);
+                app.update_subnet_lock_cost(netuid.into(), 1);
+                println!("Lock cost for subnet {:?}: {:?}", netuid, ());
             }
         }
         _ => {}

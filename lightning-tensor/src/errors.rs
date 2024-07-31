@@ -8,5 +8,8 @@ pub enum AppError {
     InvalidInput(String),
     #[error("Bittensor error: {0}")]
     BittensorError(#[from] bittensor_rs::errors::SubtensorError),
-    // Add more error variants as needed for your lightning-tensor crate
+    #[error("Wallet error: {0}")]
+    WalletError(#[from] bittensor_wallet::WalletError),
+    #[error("Configuration error: {0}")]
+    ConfigError(String),
 }
